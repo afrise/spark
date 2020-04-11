@@ -1,0 +1,139 @@
+<html>
+    <head>
+        <title>Sparkmaker FHD Bluetooth WebUI</title>
+        <script src="https://code.jquery.com/jquery-2.2.4.js"></script>
+        <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.bundle.min.js" integrity="sha384-6khuMg9gaYr5AxOqhkVIODVIvm9ynTT5J4V1cfthmT+emCG6yVmEZsRHdxlotUnm" crossorigin="anonymous"></script>
+        <link href="index.css" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600&display=swap" rel="stylesheet">
+        <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+        <script src="https://kit.fontawesome.com/ee098b4ddd.js" crossorigin="anonymous"></script>
+    </head>
+    <body>
+        <div class="container content">
+            <h1 class="header">SparkUI</h1>
+            <hr/>
+            <div id="Printer" class="card p-3">
+                <div class="status">
+                    <div id="printer-img">
+                        <div id="printer-top"><br>
+                            <div id="percent" v-if="status=='printing' || status=='paused'">{{percent}}%</div></div>
+                        <div id="printer-bottom" class="p-1">
+                            <div id = "indicator" :class="color"></div>
+                            <div id="sd-slot"></div>
+                        </div>
+                    </div>
+                </div>
+                <transition name="fade">
+                    <div class="mx-auto p-3">
+                        <div type="button" class="btn btn-primary"  v-if="!connected" v-bind:disabled="status=='connecting'" @click="connect">
+                            <i class="fab fa-bluetooth-b"></i> {{connecting ? ' Connecting...' : ' Connect'}} </div>
+                        <div v-if="connected" class="p-1">
+                            <div type="button" class="btn  btn-success" v-if="status=='standby'"  @click="start">Start Printing</div>
+                            <div type="button" class="btn btn-danger"   v-if="status=='printing'" @click="stop">Stop Printing</div>
+                            <div type="button" class="btn btn-primary"  v-if="status=='printing' || status=='paused'"  @click="pause">{{status=="printing" ? 'Pause' : 'Resume'}}</div>
+                            <div type="button" class="btn btn-secondary" @click="showFiles=!showFiles">Select File</div>
+                            <div type="button" class="btn btn-outline-secondary" @click="showAdvanced = !showAdvanced">
+                                Advanced 
+                                <i v-if="!showAdvanced" class="fas fa-angle-down"></i>
+                                <i v-if="showAdvanced" class="fas fa-angle-up"></i>
+                            </div>
+                        </div>
+                        <div v-if="showAdvanced" class="p-1">
+                            <div type="button" class="btn btn-secondary" @click="clean">Clean</div>
+                            <div type="button" class="btn btn-secondary" @click="display">Display</div>
+                            <div type="button" class="btn btn-secondary" @click="emergency">Emergency</div>
+                            <div type="button" class="btn btn-secondary" @click="fReturn">Return</div>
+                        </div>
+                    </div>
+                </transition>
+                <div class="container" v-if="showFiles">
+                    Files:
+                    <ul>
+                        <li @click="setFile(file.id)" v-for="file in files">{{file.name}}</li>
+                    </ul>
+                </div>
+            </div> 
+            <center>The advanced options are poorly understood. Use at your own risk.<br></center>
+            <hr/>
+            <div>
+                <h3 class="p-4">Why</h3>
+                <p>
+                    I bought the SparkMaker and made a few prints, but a mishap left me with a broken screen. So, roughly a year later I purchased and 
+                    installed the FHD upgrade kit. after a few failed prints I shelved the project, then returned recently with the first successful 
+                    FHD print. While checking for firmware updates, I noticed there was an android app. I had not realized the printer could be 
+                    controlled via bluetooth before this, and I was intrigued. I set off on installing the application, and found it less than 
+                    desireable. The UI was clunky, and for some reason it wouldn't let me pick a file to upload. So I get an idea: reverse engineer 
+                    the android app and build a desktop application to integrate more cleanly with the printing workflow.
+                </p>
+                <p>
+                    The app was written in react native as luck would have it, so after using a random web tool for cleaning up react bundles i was 
+                    able to sift through all the javascript to find the commands that are being sent and how it handles responses. using standart web 
+                    bluetooth functions and vue.js I threw together this frontend. Spoiler: You can't send files to the printer, they have to already 
+                    exist on the SD Card. As far as I can tell, to add that capability would require a firmware level change - and that is a project 
+                    for another day.
+                </p>
+                <h3 class="p-4">The API</h3>
+                <p>
+                    The bluetooth communication API for the SparkMaker FHD is ...interesting. It seems like it was just patched in as an after thought. 
+                    Communication is donve VIA BluetoothLE Characteristics. The receive and transmit channels are A CHL(RX,20Byte) and B CHL(TX,20Byte). 
+                    They are UTF-8 encoded streams, split by newlines(?)
+                    <br>
+                    There are really 2 classes of command: Execution commands and Information commands. 
+                </p>
+                <div>
+                    <h4>Execution Commands</h4>
+                    <p>
+                        <ul>
+                            <li><b>Start Printing;</b> - Start printing, like pressing the control button when in standby (not printing) </li>
+                            <li><b>Stop Printing;</b> - Ends printing. cannot be resumed. Waits to complete current step</li>
+                            <li><b>Pause Printing;</b> - When printing, sets state to paused. (like pressing the control button on the machine.</li>
+                            <li><b>Keep Printing;</b> - Resume from paused state</li>
+                            <li><b>Emergency;</b> - Emergency shut off. basically soft resets the printer.</li>
+                            <li><b>Clean;</b> - Should be self explanatory, but I don't know what it does.</li>
+                            <li><b>Display;</b> - Probably turns on the display.</li>
+                            <li><b>Return;</b> - No idea what this one does.</li>
+                            <li><b>G1 Z[n];</b> - Move the build platform up or down. [n] can be one of the following: -50, -10, -5, -1, 1, 5, 10, 50</li>
+                            <li><b>N2 R255;</b> - Turn on the UV LEDs. Do not send this with Resin in the printer as it will likely cure.</li>
+                        </ul>
+                    </p>
+                    <h4>Information Commands</h4>
+                    <p>
+                        <ul>
+                            <li><b>PWD-OK</b> - Part of the odd login handshake</li>
+                            <li><b>scan-file</b> - Retrieves the name of the file queued in the printer</li>
+                        </ul>
+                    </p>
+                </div>
+                <br>
+                <h4 class="p-1">The Handshake</h4>
+                <p>sort of anyway. When you first connect to the printer, it will be broadcasting two messages repeatedly, 'P-[password]' and 'online'. 
+                    'online' is sent constantly throughout comms, and is sort of a heartbeat signal. I just ignore it. The correct response to the P- 
+                    command is to verify the password and respond with PWD-OK\n. I just send this if I get a P- message, because if you're already 
+                    connected to the bluetooth you have already validated that password, but I digress. once the PWD-OK command is sent, you get more info. <br>
+                    <br>
+                    At this point, the printer will send a few more messages. 
+                    <ul>
+                        <li>standby_sts - tells you the current state pf the printer. [printing, no sd card, standby, paused, print over, pause over] </li>
+                        <li>pf_ - the name of the currently printing file. if it's on standby this will be blank.</li>
+                        <li>f- - similar to pf_, but sent as the response to scan-file. will have a file name with a .[index] attached, i.e. f-print.fhd.0</li>
+                        <li>F/S=n/n - current / total layers. i.e. F/S=25/259. This only sends when printing</li>
+                    </ul>
+                </p>
+                <br>
+                <h4>Files</h4>
+                <p>
+                    You would think this thing would have the ability to load files over bluetooth, but sadly, no. It can however pick a file on the SD card to print via 
+                    bluetooth. here's how it works:
+                    <ul>
+                        <li>send scan-file - this will return a list of files with an id appended</li>
+                        <li>file-[id] - tell the printer which file to use</li>
+                    </ul>
+                </p>
+                That's pretty much it, have fun.
+            </div>
+            <div><center><br><hr/><br><br>&copy;2020 Allen Frise</center></div>
+        </div>
+        <script src="index.js"></script>
+    </body>
+</html>
